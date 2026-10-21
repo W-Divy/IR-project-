@@ -1,0 +1,25 @@
+# Streamlit local configurations & secrets
+.streamlit/secrets.toml
+.streamlit/credentials.toml
+
+# Python virtual environments & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+ENV/
+.env
+
+# Large archives and pre-trained binary models (Prevent exceeding GitHub's 100MB limit)
+*.zip
+*.npy
+10-doc-classifier.zip
+data.zip
+doc_classifier_data.npy
+
+# OS & Editor generated files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
