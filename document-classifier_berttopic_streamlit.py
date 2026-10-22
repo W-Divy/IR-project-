@@ -1,11 +1,12 @@
 import streamlit as st
 from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
-from sklearn.datasets import fetch_20newsgroups
+from sklearn.feature_extraction.text import CountVectorizer
+from umap import UMAP
 import PyPDF2
 import docx
 import pandas as pd
-
+from sklearn.datasets import fetch_20newsgroups
 st.set_page_config(page_title="Document Topic Discovery & IR", layout="wide")
 
 def extract_text_from_pdf(file):
@@ -31,60 +32,45 @@ def extract_text_from_txt(file):
 def load_and_train_model():
     sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
     
-    # Fast, self-contained corpus across multiple domains (no internet download required)
-    docs = [
-        # Space & Astronomy
-        "NASA rover explores the surface of Mars searching for ancient water and microbial life.",
-        "The Hubble and James Webb Space Telescopes capture distant galaxies and stellar nebulae.",
-        "Rocket propulsion systems and orbital satellite launches by SpaceX and planetary exploration.",
-        "Astronomers discover exoplanets orbiting distant stars in habitable zones of deep space.",
-        "Lunar missions aim to establish a permanent human outpost on the Moon's South Pole.",
-        "Cosmology studies dark matter, cosmic background radiation, and expansion of the universe.",
-        
-        # Medicine & Healthcare
-        "Clinical trials evaluate patient response to novel immunotherapy cancer treatments.",
-        "Cardiovascular diseases, heart attacks, and blood pressure monitoring in clinical healthcare.",
-        "Neuroscientists study synaptic plasticity, Alzheimer's disease, and brain neuropathology.",
-        "Vaccine development uses mRNA technology to stimulate immune responses against pathogens.",
-        "Physicians diagnose diabetes, glucose metabolic regulation, and dietary insulin requirements.",
-        "Hospital intensive care units track vital signs, arterial oxygen, and patient outcomes.",
-        
-        # Computer Science & AI
-        "Convolutional neural networks and deep learning models classify images and visual features.",
-        "Natural language processing uses transformer architectures for text summarization and search.",
-        "Database indexing, SQL queries, and distributed storage systems optimize retrieval latency.",
-        "Cybersecurity algorithms detect malware, encrypt network communication, and mitigate DDoS attacks.",
-        "Compiler optimization and runtime execution speeds up memory allocation in software programs.",
-        "Reinforcement learning agents optimize reward policies in complex simulated environments.",
-        
-        # Finance & Economics
-        "Central banks adjust interest rates to control inflation and stimulate economic investment.",
-        "Stock market volatility reflects equity earnings reports, dividend yields, and bond rates.",
-        "Cryptocurrency and decentralized ledger technologies challenge traditional banking systems.",
-        "Fiscal policy and government tax revenue impact national debt and employment trends.",
-        "Portfolio diversification minimizes asset risk while maximizing expected annualized returns."
+    categories = [
+        'sci.space', 
+        'sci.med', 
+        'comp.graphics', 
+        'rec.autos', 
+        'talk.politics.mideast'
     ]
+    data = fetch_20newsgroups(subset='train', categories=categories, remove=('headers', 'footers', 'quotes'))
+    docs = [d for d in data.data if len(d.strip()) > 80][:350]
+    
+    # Strip English stop words and discard words appearing in only 1 document
+    vectorizer_model = CountVectorizer(stop_words="english", min_df=2)
     
     topic_model = BERTopic(
         embedding_model=sentence_model, 
-        min_topic_size=2, 
+        vectorizer_model=vectorizer_model,
         verbose=False
     )
     topic_model.fit(docs)
     return sentence_model, topic_model
 
 def main():
-    st.title("Topic Modeling to Retrieve Information")
+    st.title("Topic Modeling for Document Discovery & Information Retrieval")
     st.write("Upload a document (.pdf, .docx, .txt) to discover its hidden topic and extract key themes.")
 
+    # 1. Initialize models
     with st.spinner("Initializing models and discovering latent topics..."):
         sentence_model, topic_model = load_and_train_model()
 
-    # Sidebar: Discovered topics across the corpus
-    st.sidebar.header("Corpus Topic Clusters")
-    topic_info = topic_model.get_topic_info()
-    st.sidebar.dataframe(topic_info[['Topic', 'Count', 'Name']].head(10))
+    # 2. Main Page Topic Overview Table
+    st.subheader("All Discovered Corpus Topics")
+    all_topics_df = topic_model.get_topic_info()
+    st.dataframe(all_topics_df, use_container_width=True)
 
+    # 3. Sidebar: Quick overview
+    st.sidebar.header("Corpus Topic Clusters")
+    st.sidebar.dataframe(all_topics_df[['Topic', 'Count', 'Name']], use_container_width=True)
+
+    # 4. Document Upload
     uploaded_file = st.file_uploader(
         "Choose a file to analyze", 
         type=['txt', 'pdf', 'docx'],
@@ -144,15 +130,17 @@ def main():
                 else:
                     st.write("No distinct topic cluster extracted.")
 
-            # Document Preview
             with st.expander("Document Text Preview"):
                 st.text(text[:800] + ("..." if len(text) > 800 else ""))
 
-            # Visualizations for presentation screenshots
+            # Robust Visualizations
             st.markdown("---")
             st.subheader("Topic Space Visualizations")
-            fig = topic_model.visualize_topics()
-            st.plotly_chart(fig, use_container_width=True)
+            try:
+                fig = topic_model.visualize_barchart(top_n_topics=5)
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as viz_err:
+                st.info(f"Visualizer notice: {viz_err}")
 
             progress_bar.progress(100)
             status_text.text("Analysis complete!")
